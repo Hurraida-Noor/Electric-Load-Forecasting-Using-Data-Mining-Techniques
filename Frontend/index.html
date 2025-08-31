@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Clustering Interface</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 2rem;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 2rem;
+        }
+
+        form {
+            max-width: 500px;
+            background: #fff;
+            margin: 0 auto;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        label {
+            display: block;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        input[type="text"],
+        input[type="date"],
+        input[type="number"] {
+            width: 100%;
+            padding: 0.6rem;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="date"]:focus,
+        input[type="number"]:focus {
+            border-color: #6c63ff;
+            outline: none;
+        }
+
+        input[type="submit"] {
+            margin-top: 1.5rem;
+            width: 100%;
+            padding: 0.8rem;
+            background-color: #6c63ff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #574fcf;
+        }
+
+        #line-graph, #cluster-graph {
+            max-width: 900px;
+            margin: 3rem auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Clustering Interface</h1>
+    <form>
+        <label for="city">City:</label>
+        <input type="text" id="city" name="city" value="nyc">
+
+        <label for="start_date">Start Date:</label>
+        <input type="date" id="start_date" name="start_date" value="2018-07-02">
+
+        <label for="end_date">End Date:</label>
+        <input type="date" id="end_date" name="end_date" value="2018-07-02">
+
+        <label for="k_clusters">Number of Clusters:</label>
+        <input type="number" id="k_clusters" name="k_clusters" value="2">
+
+        <input type="submit" value="Submit">
+    </form>
+
+    <br>
+    <br>
+    <br>
+    <div id="line-graph2"></div>
+    <div id="line-graph"></div>
+    <div id="cluster-graph"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>
+        document.querySelector('form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const city = document.getElementById('city').value;
+            const start_date = document.getElementById('start_date').value;
+            const end_date = document.getElementById('end_date').value;
+            const k_clusters = document.getElementById('k_clusters').value;
+            const url = `http://127.0.0.1:5000/clustering?city=${city}&start_date=${start_date}&end_date=${end_date}&k=${k_clusters}`;
+
+            try {
+                // Clustering plot (existing)
+                const response = await axios.get(url);
+                const data = response.data.data;
+                const times = data.map(d => d.time);
+                const x = data.map(d => d.x);
+                const y = data.map(d => d.y);
+                const clusters = data.map(d => d.cluster);
+
+                Plotly.newPlot('line-graph', [{
+                    x: times,
+                    y: y,
+                    mode: 'markers',
+                    name: 'Y over Time',
+                    marker: { color: '#6c63ff' }
+                }], {
+                    title: 'Y over Time',
+                    xaxis: { title: 'Time' },
+                    yaxis: { title: 'Y Value' }
+                });
+
+                const clusterSet = [...new Set(clusters)];
+                const COLORS = [
+                    '#e6194b', '#3cb44b', '#ffe119', '#4363d8',
+                    '#f58231', '#911eb4', '#46f0f0', '#f032e6',
+                    '#bcf60c', '#fabebe', '#008080', '#e6beff'
+                ];
+
+                const traces = clusterSet.map((cluster, index) => {
+                    const indices = clusters.map((c, i) => c === cluster ? i : -1).filter(i => i !== -1);
+                    return {
+                        x: indices.map(i => x[i]),
+                        y: indices.map(i => y[i]),
+                        mode: 'markers',
+                        type: 'scatter',
+                        name: `Cluster ${cluster}`,
+                        marker: {
+                            size: 10,
+                            color: COLORS[index % COLORS.length],
+                            opacity: 0.85
+                        }
+                    };
+                });
+
+                Plotly.newPlot('cluster-graph', traces, {
+                    title: 'K-Means Cluster Plot',
+                    xaxis: { title: 'X' },
+                    yaxis: { title: 'Y' },
+                    showlegend: true
+                });
+
+                // Line forecast plot (new)
+                const lineUrl = `http://127.0.0.1:5000/line?city=${city}&start_date=${start_date}&end_date=${end_date}`;
+                const lineResponse = await axios.get(lineUrl);
+                const results = lineResponse.data.results;
+
+                const lineTraces = [
+                    {
+                        x: results.x,
+                        y: results.actual,
+                        mode: 'lines+markers',
+                        name: 'Actual Demand'
+                    },
+                    {
+                        x: results.x,
+                        y: results.lr_pred,
+                        mode: 'lines',
+                        name: 'Linear Regression'
+                    },
+                    {
+                        x: results.x,
+                        y: results.pr_pred,
+                        mode: 'lines',
+                        name: 'Polynomial Regression'
+                    },
+                    {
+                        x: results.x,
+                        y: results.rf_pred,
+                        mode: 'lines',
+                        name: 'Random Forest'
+                    },
+                    {
+                        x: results.x,
+                        y: results.xg_pred,
+                        mode: 'lines',
+                        name: 'XGBoost'
+                    },
+                    {
+                        x: results.x,
+                        y: results.arima_pred,
+                        mode: 'lines',
+                        name: 'ARIMA'
+                    },
+                    {
+                        x: results.x,
+                        y: results.lstm_pred,
+                        mode: 'lines',
+                        name: 'LSTM'
+                    }
+                ];
+
+                Plotly.newPlot('line-graph2', lineTraces, {
+                    title: 'Demand Forecasting',
+                    xaxis: { title: 'Time' },
+                    yaxis: { title: 'Demand' }
+                });
+
+            } catch (error) {
+                alert(error.response?.data?.message || "Error retrieving data.");
+            }
+        });
+    </script>
+</body>
+</html>
